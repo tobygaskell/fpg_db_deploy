@@ -13,7 +13,7 @@ jobs:
     environment: development
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -28,15 +28,15 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-root
 
-      - name: Create yoyo.ini from secret
+      - name: Create yoyo.ini from Secret
         run: |
           echo "[DEFAULT]" > yoyo.ini
           echo "sources = migrations" >> yoyo.ini
           echo "batch_mode = on" >> yoyo.ini
           echo "verbosity = 2" >> yoyo.ini
-          echo "database = ${{ secrets.YOYO_DB_URL }}" >> yoyo.ini
+          echo "database = mysql://${{ secrets.USERNAME }}:${{ secrets.PASSWORD }}@${{ secrets.HOST }}/${{ vars.DATABASE }} >> yoyo.ini
 
-      - name: List migrations
+      - name: List Migrations
         run: poetry run yoyo list
 
       - name: Deploy SQL

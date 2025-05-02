@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS STANDINGS_TEST (
+	ROUND               INT,
+	PLAYER_ID           INT,
+	OVERALL_TOTAL       INT,
+	POSITION            INT
+);
