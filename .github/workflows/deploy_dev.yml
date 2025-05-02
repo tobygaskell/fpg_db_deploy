@@ -21,23 +21,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Poetry
-        run: |
-          pip install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-root
-
-      - name: Create yoyo.ini from Secret
-        run: |
-          echo "[DEFAULT]" > yoyo.ini
-          echo "sources = migrations" >> yoyo.ini
-          echo "batch_mode = on" >> yoyo.ini
-          echo "verbosity = 2" >> yoyo.ini
-          echo "database = mysql://${{ secrets.USERNAME }}:${{ secrets.PASSWORD }}@${{ secrets.HOST }}/${{ vars.DATABASE }}" >> yoyo.ini
-
-      - name: List Migrations
-        run: poetry run yoyo list
-
-      - name: Deploy SQL
-        run: poetry run yoyo apply
+      - name: yoyo-deploy
+        uses: ./.github/actions/yoyo_deploy
+        with:
+          database: ${{ vars.DATABASE }}
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
