@@ -1,0 +1,13 @@
+[project]
+name = "fpg-db-deploy"
+version = "0.1.0"
+description = "This package is used to deploy sql changes to the fpg database"
+authors = [
+    {name = "Toby Gaskell",email = "Toby96@sky.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "yoyo-migrations (>=9.0.0,<10.0.0)",
+    "pymysql (>=1.1.1,<2.0.0)",
+]
