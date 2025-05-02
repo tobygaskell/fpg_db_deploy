@@ -20,8 +20,7 @@ jobs:
 
       - name: Install Poetry
         run: |
-          curl -sSL https://install.python-poetry.org | python3
-          echo "$HOME/.local/bin" >> $GITHUB_PATH  # Add Poetry to the PATH
+          pip install poetry
 
       - name: Install dependencies
         run: poetry install --no-root
@@ -35,7 +34,7 @@ jobs:
           echo "database = ${{ secrets.YOYO_DB_URL }}" >> yoyo.ini
 
       - name: List migrations
-        run: yoyo list
+        run: poetry run yoyo list
 
       - name: Deploy SQL
-        run: yoyo apply
+        run: poetry run yoyo apply
