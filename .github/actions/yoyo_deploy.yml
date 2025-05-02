@@ -1,0 +1,32 @@
+name: yoyo-deploy
+
+descirption: Deploy yoyo migrations
+
+inputs:
+  database:
+    description: The database to deploy to
+    required: true
+  host:
+    description: The host of the database
+    required: true
+  username:
+    description: The username for the database
+    required: true
+  password:
+    description: The password for the database
+    required: true
+
+runs: |
+      pip install poetry
+
+      poetry install --no-root
+
+      echo "[DEFAULT]" > yoyo.ini
+      echo "sources = migrations" >> yoyo.ini
+      echo "batch_mode = on" >> yoyo.ini
+      echo "verbosity = 2" >> yoyo.ini
+      echo "database = mysql://${{ inputs.USERNAME }}:${{ inputs.PASSWORD }}@${{ inputs.HOST }}/${{ inputs.DATABASE }}" >> yoyo.ini
+      
+      poetry run yoyo list
+
+      poetry run yoyo apply
