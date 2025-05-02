@@ -1,16 +1,16 @@
-name: Deploy to Dev
+name: Deploy to Prod
 
 on:
   push:
     branches:
-      - develop
+      - main
   workflow_dispatch:
 
 jobs:
   deploy-migrations:
     runs-on: ubuntu-latest
 
-    environment: development
+    environment: production
 
     steps:
       - name: Checkout Code
