@@ -1,4 +1,4 @@
--- Depends: tokens teams standings scores rounds results players notification_logs logs fixtures current_round choices call_logs
+-- depends: tokens teams standings scores rounds results players notification_logs logs fixtures current_round choices call_logs
 
 -- CALL_LOGS
 TRUNCATE TABLE CALL_LOGS;
