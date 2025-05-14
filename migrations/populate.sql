@@ -1,3 +1,5 @@
+-- Depends: tokens teams standings scores rounds results players notification_logs logs fixtures current_round choices call_logs
+
 -- CALL_LOGS
 TRUNCATE TABLE CALL_LOGS;
 INSERT INTO CALL_LOGS SELECT * FROM FPG.CALL_LOGS;
