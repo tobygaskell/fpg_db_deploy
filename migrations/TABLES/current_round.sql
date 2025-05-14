@@ -1,3 +1,3 @@
 CREATE TABLE IF NOT EXISTS CURRENT_ROUND (
-    ROUND               INT
+    ROUND_ID               INT
 );
