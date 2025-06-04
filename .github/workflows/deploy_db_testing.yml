@@ -1,5 +1,4 @@
-name: Deploy to Dev
-
+name: Deploy DB Testing
 on:
   push:
     branches:
