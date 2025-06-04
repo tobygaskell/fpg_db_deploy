@@ -25,7 +25,7 @@ runs:
         poetry install --no-root
 
         echo "[DEFAULT]" > yoyo.ini
-        echo "sources = migrations" >> yoyo.ini
+        echo "sources = migrations migrations/TABLES" >> yoyo.ini
         echo "batch_mode = on" >> yoyo.ini
         echo "verbosity = 2" >> yoyo.ini
         echo "database = mysql://${{ inputs.USERNAME }}:${{ inputs.PASSWORD }}@${{ inputs.HOST }}/${{ inputs.DATABASE }}" >> yoyo.ini

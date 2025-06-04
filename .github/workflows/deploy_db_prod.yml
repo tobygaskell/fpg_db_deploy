@@ -1,4 +1,4 @@
-name: Deploy to Prod
+name: Deploy DB Prod
 
 on:
   push:
