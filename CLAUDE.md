@@ -2,6 +2,8 @@
 
 Guidance for Claude Code when working in this repository. This file is the source of truth for how the schema is managed today; design history lives in `FPG-APP/fpg-docs`.
 
+Before feature work, check `INDEX.md` and the issues in `FPG-APP/fpg-docs`. Work that spans repos or changes the schema, scoring, auth, or player-visible behaviour needs a design and a plan there first. Branch names and PR titles start with the initiative slug (for example `blog-automation/ghost-draft-cli`); PR bodies link `FPG-APP/fpg-docs#<issue>`. When your change goes live, update that initiative's status card in the same session.
+
 ## What this repo does
 
 Owns the schema of the FPG database: MariaDB 11.8 on the Raspberry Pi `fpg-database` (LAN `192.168.0.161`), with one schema per environment: `FPG` (production), `UAT_FPG` (testing), `DEV_FPG` (development). Changes are plain SQL files applied with [Yoyo Migrations](https://ollycope.com/software/yoyo/latest/), by GitHub Actions on push or by hand.
