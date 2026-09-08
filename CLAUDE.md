@@ -14,7 +14,7 @@ Owns the schema of the FPG database: MariaDB 11.8 on the Raspberry Pi `fpg-datab
 uv sync --locked
 uv run yoyo list                              # applied / pending
 uv run yoyo apply                             # apply pending (add -b for non-interactive)
-uv run yoyo reapply --revision populate_dev   # re-run one migration; only ever against DEV_FPG
+uv run yoyo reapply --revision populate_dev   # re-run the local dev refresh script; only ever against DEV_FPG
 ```
 
 The database is LAN-only. From a laptop, open the tunnel first (`db-tunnel` in `~/.zshrc`, or `ssh -L 3306:127.0.0.1:3306 database`) and point `yoyo.ini` at `127.0.0.1`. Inside the cluster the host is the `mariadb` service.
@@ -48,8 +48,8 @@ CI generates the same file from GitHub environment secrets and sets `batch_mode 
 
 ## Authoring a migration
 
-- File names are descriptive, no dates or sequence numbers. Root files are `UPPERCASE_VERB_OBJECT.sql` (`ADD_COL_ACTIVE_TO_TOKENS.sql`); `TABLES/` files are the bare lowercase table name (`mini_leagues.sql`). `populate_dev.sql` is the one exception.
-- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `ADD_MCP_LOGS_TOKEN_KIND` (it depends on `ADD_OAUTH_TABLES`). About twenty older files have no header and rely on scan order; do not add to that set.
+- File names are descriptive, no dates or sequence numbers. Root files are `UPPERCASE_VERB_OBJECT.sql` (`ADD_COL_ACTIVE_TO_TOKENS.sql`); `TABLES/` files are the bare lowercase table name (`mini_leagues.sql`). `populate_dev.sql`, the gitignored local file described under Gotchas, is the one exception.
+- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `DROP_COL_FIXTURE_ID_FROM_CHOICES` (it depends on `ADD_FK_SCORES_ROUNDS`, then `ADD_FK_CHOICES_ROUNDS`, then `ADD_MCP_LOGS_TOKEN_KIND`). About twenty older files have no header and rely on scan order; do not add to that set.
 - New tables have recently been created from root files (`ADD_MCP_TOKENS_AND_LOGS.sql`, `ADD_OAUTH_TABLES.sql`) rather than `TABLES/`. Either location works; the depends header is what matters.
 - No rollback files exist, so `yoyo rollback` does nothing. Recovery is a forward migration or a restore from the nightly backup.
 - Migrations that touch data before adding constraints (`ADD_UNIQUE_USERS_EMAIL`, `ADD_UNIQUE_USERS_USERNAME`) fail on duplicates; check the data first.
@@ -67,8 +67,8 @@ Twenty-nine tables, one sequence and one hand-made view exist in production toda
 | `FIXTURES`, `RESULTS` | Per-round schedule (`DERBY` flag) and results (`HOME_GOALS`, `AWAY_GOALS`, `WINNER`, `GAME_STATUS`) |
 | `ROUNDS` | Round metadata: `CUT_OFF`, `DP_ROUND`, `DMM_ROUND` |
 | `CURRENT_ROUND` | Singleton: `ROUND_ID`, `SEASON`, `OFF_SEASON`, `NEXT_SEASON_DATE` |
-| `CHOICES` | One pick per player per round; `METHOD` marks auto-assigned picks; `FIXTURE_ID` is always NULL |
-| `SCORES` | Per-player per-round points with every modifier column; `SUBTOTAL` is post-doubling |
+| `CHOICES` | One pick per player per round; `METHOD` marks auto-assigned picks; `(ROUND, SEASON)` is a foreign key to `ROUNDS` |
+| `SCORES` | Per-player per-round points with every modifier column; `SUBTOTAL` is post-doubling; `(ROUND, SEASON)` is a foreign key to `ROUNDS` |
 | `STANDINGS` | Season standings written by the engine |
 | `MINI_LEAGUES`, `MINI_LEAGUE_MEMBERS`, `MINI_LEAGUE_SCORES`, `MINI_LEAGUE_STANDINGS` | Mini-leagues |
 | `REFRESH_TOKENS` | Hashed JWT refresh tokens with expiry |
@@ -79,7 +79,7 @@ Twenty-nine tables, one sequence and one hand-made view exist in production toda
 | `CALL_LOGS` | One row per authenticated API request; `STATUS_CODE`, `DURATION_MS`, `PLATFORM` are NULL before their migration |
 | `LOGS`, `NOTIFICATION_LOGS`, `ERROR_LOGS` | Engine run log, push sends, caught exceptions |
 
-Most game tables carry a `SEASON` column. The MCP and OAuth foreign keys reference `PLAYERS(PLAYER_ID)`, which has no primary key. `call_log_sessions` is a view in `FPG` only, created by hand for fpg-analytics; it is in no migration and does not exist in `UAT_FPG`.
+Most game tables carry a `SEASON` column. Three foreign keys exist among the game tables: `RESULTS` to `FIXTURES`, and `CHOICES` and `SCORES` to `ROUNDS`. There is deliberately none to `PLAYERS` or `USERS` (see `DROP_FK_CHOICES_SCORES_PLAYERS` below), and none from `FIXTURES` to `ROUNDS`, because a season's fixtures are loaded up front while the engine creates each round's row as it opens. The MCP and OAuth foreign keys reference `PLAYERS(PLAYER_ID)`, which has no primary key. `call_log_sessions` is a view in `FPG` only, created by hand for fpg-analytics; it is in no migration and does not exist in `UAT_FPG`.
 
 ## Deployment
 
@@ -96,7 +96,7 @@ A CronJob in fpg-k8s (`db-backup-cron`, prod namespace, 02:00 daily) runs `mysql
 
 ## Gotchas in the migration history
 
-- `populate_dev.sql` truncates twelve tables and copies `FPG.*` into the current schema. It is column-order dependent and would wipe production if ever applied to `FPG`; only reapply it against `DEV_FPG`.
+- `populate_dev.sql` is not in the repo: it is gitignored beside `yoyo.ini` and exists only on the laptop and as an applied row in `DEV_FPG._yoyo_migration`. It truncates twelve tables and copies `FPG.*` into the current schema inside a `SET FOREIGN_KEY_CHECKS = 0` / `= 1` pair, because a parent of a foreign key cannot be truncated otherwise; the `CHOICES` copy names its columns since `FIXTURE_ID` was dropped. It is otherwise column-order dependent and would wipe production if ever applied to `FPG`; only reapply it against `DEV_FPG`.
 - `DROP_FK_CHOICES_SCORES_PLAYERS` drops foreign keys whose `ADD_*` files were deleted from the repo; dev and testing carry orphaned `_yoyo_migration` rows for them, production never had them.
 - `INSERT_TOBY_INTO_USERS` seeds a real account in every schema. `INIT_ROUND_1_2025`, `UPDATE_CURRENT_ROUND_2025` and `INSERT_2024_INTO_SEASONS` are season data scripts (the last is an UPDATE; there is no `SEASONS` table).
 - `ADD_COLS_STANDINGS` renames `OVERALL_TOTAL` to `SCORE` and assumes an empty table.
