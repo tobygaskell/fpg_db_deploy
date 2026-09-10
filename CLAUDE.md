@@ -49,7 +49,7 @@ CI generates the same file from GitHub environment secrets and sets `batch_mode 
 ## Authoring a migration
 
 - File names are descriptive, no dates or sequence numbers. Root files are `UPPERCASE_VERB_OBJECT.sql` (`ADD_COL_ACTIVE_TO_TOKENS.sql`); `TABLES/` files are the bare lowercase table name (`mini_leagues.sql`). `populate_dev.sql`, the gitignored local file described under Gotchas, is the one exception.
-- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `DROP_COL_FIXTURE_ID_FROM_CHOICES` (it depends on `ADD_FK_SCORES_ROUNDS`, then `ADD_FK_CHOICES_ROUNDS`, then `ADD_MCP_LOGS_TOKEN_KIND`). About twenty older files have no header and rely on scan order; do not add to that set.
+- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `SET_NOT_NULL_FIXTURES` (it depends on `DROP_COL_FIXTURE_ID_FROM_CHOICES`, then `ADD_FK_SCORES_ROUNDS`, then `ADD_FK_CHOICES_ROUNDS`). About twenty older files have no header and rely on scan order; do not add to that set.
 - New tables have recently been created from root files (`ADD_MCP_TOKENS_AND_LOGS.sql`, `ADD_OAUTH_TABLES.sql`) rather than `TABLES/`. Either location works; the depends header is what matters.
 - No rollback files exist, so `yoyo rollback` does nothing. Recovery is a forward migration or a restore from the nightly backup.
 - Migrations that touch data before adding constraints (`ADD_UNIQUE_USERS_EMAIL`, `ADD_UNIQUE_USERS_USERNAME`) fail on duplicates; check the data first.
@@ -64,7 +64,7 @@ Twenty-nine tables, one sequence and one hand-made view exist in production toda
 | `PLAYERS` | Legacy player metadata (id, email, username, fav team, created_at); no primary key; not read by fpg-api or fpg-engine |
 | `PLAYER_IDS` | Sequence for new player IDs (created by `SEQ_PLAYER_IDS.sql`, starts at 4001) |
 | `TEAMS` | Premier League teams per season |
-| `FIXTURES`, `RESULTS` | Per-round schedule (`DERBY` flag) and results (`HOME_GOALS`, `AWAY_GOALS`, `WINNER`, `GAME_STATUS`) |
+| `FIXTURES`, `RESULTS` | Per-round schedule and results. `FIXTURES` teams, `KICKOFF`, `ROUND`, `SEASON` and `DERBY` are NOT NULL (`SET_NOT_NULL_FIXTURES`); `LOCATION` is not. `RESULTS` (`HOME_GOALS`, `AWAY_GOALS`, `WINNER`, `GAME_STATUS`) holds a row for every fixture of a closed round, with NULL goals and `WINNER` when the match was not finished |
 | `ROUNDS` | Round metadata: `CUT_OFF`, `DP_ROUND`, `DMM_ROUND` |
 | `CURRENT_ROUND` | Singleton: `ROUND_ID`, `SEASON`, `OFF_SEASON`, `NEXT_SEASON_DATE` |
 | `CHOICES` | One pick per player per round; `METHOD` marks auto-assigned picks; `(ROUND, SEASON)` is a foreign key to `ROUNDS` |
