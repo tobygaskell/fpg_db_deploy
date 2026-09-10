@@ -49,19 +49,18 @@ CI generates the same file from GitHub environment secrets and sets `batch_mode 
 ## Authoring a migration
 
 - File names are descriptive, no dates or sequence numbers. Root files are `UPPERCASE_VERB_OBJECT.sql` (`ADD_COL_ACTIVE_TO_TOKENS.sql`); `TABLES/` files are the bare lowercase table name (`mini_leagues.sql`). `populate_dev.sql`, the gitignored local file described under Gotchas, is the one exception.
-- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `SET_NOT_NULL_FIXTURES` (it depends on `DROP_COL_FIXTURE_ID_FROM_CHOICES`, then `ADD_FK_SCORES_ROUNDS`, then `ADD_FK_CHOICES_ROUNDS`). About twenty older files have no header and rely on scan order; do not add to that set.
+- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `ADD_FK_GAME_TABLES_USERS`, the last of an eleven-file chain that starts at `UPDATE_USERS_CREATED_AT_FROM_PLAYERS` (which depends on `SET_NOT_NULL_FIXTURES`). About twenty older files have no header and rely on scan order; do not add to that set.
 - New tables have recently been created from root files (`ADD_MCP_TOKENS_AND_LOGS.sql`, `ADD_OAUTH_TABLES.sql`) rather than `TABLES/`. Either location works; the depends header is what matters.
 - No rollback files exist, so `yoyo rollback` does nothing. Recovery is a forward migration or a restore from the nightly backup.
-- Migrations that touch data before adding constraints (`ADD_UNIQUE_USERS_EMAIL`, `ADD_UNIQUE_USERS_USERNAME`) fail on duplicates; check the data first.
+- Migrations that touch data before adding constraints (`ADD_UNIQUE_USERS_EMAIL`, `ADD_UNIQUE_USERS_USERNAME`, `ADD_FK_TOKENS_USERS`) fail on duplicates or orphans; check the data first.
 
 ## Schema
 
-Twenty-nine tables, one sequence and one hand-made view exist in production today.
+Twenty-eight tables, one sequence and one hand-made view exist in production today.
 
 | Table | Purpose |
 |---|---|
-| `USERS` | Auth and profile: email, Argon2 hash, username, full name, fav team, `IS_DISABLED`, `EMAIL_OPT_OUT` |
-| `PLAYERS` | Legacy player metadata (id, email, username, fav team, created_at); no primary key; not read by fpg-api or fpg-engine |
+| `USERS` | Auth and profile: email, Argon2 hash, username, full name, fav team, `IS_DISABLED`, `EMAIL_OPT_OUT`; `CREATED_AT` is the signup time for accounts since 2025-07-01 and the June 2026 import date for older ones. Parent of every player foreign key |
 | `PLAYER_IDS` | Sequence for new player IDs (created by `SEQ_PLAYER_IDS.sql`, starts at 4001) |
 | `TEAMS` | Premier League teams per season |
 | `FIXTURES`, `RESULTS` | Per-round schedule and results. `FIXTURES` teams, `KICKOFF`, `ROUND`, `SEASON` and `DERBY` are NOT NULL (`SET_NOT_NULL_FIXTURES`); `LOCATION` is not. `RESULTS` (`HOME_GOALS`, `AWAY_GOALS`, `WINNER`, `GAME_STATUS`) holds a row for every fixture of a closed round, with NULL goals and `WINNER` when the match was not finished |
@@ -79,7 +78,11 @@ Twenty-nine tables, one sequence and one hand-made view exist in production toda
 | `CALL_LOGS` | One row per authenticated API request; `STATUS_CODE`, `DURATION_MS`, `PLATFORM` are NULL before their migration |
 | `LOGS`, `NOTIFICATION_LOGS`, `ERROR_LOGS` | Engine run log, push sends, caught exceptions |
 
-Most game tables carry a `SEASON` column. Three foreign keys exist among the game tables: `RESULTS` to `FIXTURES`, and `CHOICES` and `SCORES` to `ROUNDS`. There is deliberately none to `PLAYERS` or `USERS` (see `DROP_FK_CHOICES_SCORES_PLAYERS` below), and none from `FIXTURES` to `ROUNDS`, because a season's fixtures are loaded up front while the engine creates each round's row as it opens. The MCP and OAuth foreign keys reference `PLAYERS(PLAYER_ID)`, which has no primary key. `call_log_sessions` is a view in `FPG` only, created by hand for fpg-analytics; it is in no migration and does not exist in `UAT_FPG`.
+Most game tables carry a `SEASON` column. Foreign keys: `RESULTS` to `FIXTURES`; `CHOICES`, `SCORES`, `MINI_LEAGUE_SCORES` and `MINI_LEAGUE_STANDINGS` to `ROUNDS` on `(ROUND, SEASON)`; `MINI_LEAGUE_MEMBERS`, `MINI_LEAGUE_SCORES` and `MINI_LEAGUE_STANDINGS` to `MINI_LEAGUES`; and `PLAYER_ID` keys to `USERS` from `CHOICES`, `SCORES`, `STANDINGS`, `MINI_LEAGUES` (`CREATED_BY`), the three mini-league child tables, `REFRESH_TOKENS`, `TOKENS`, `MCP_TOKENS` and the three OAuth token tables. Delete rule: sessions and memberships (`REFRESH_TOKENS`, `TOKENS`, MCP and OAuth tokens, `MINI_LEAGUE_MEMBERS`) cascade from `USERS`, and league children cascade from `MINI_LEAGUES`; game history and league ownership restrict, so an account with picks cannot be deleted. Nothing deletes accounts today; deactivation sets `IS_DISABLED`. There is no key from `FIXTURES` to `ROUNDS`, because a season's fixtures are loaded up front while the engine creates each round's row as it opens.
+
+Time columns are `DATETIME` with whole seconds; `TIMESTAMP` is not used. Audit columns (`created_at`, `expires_at`, `LOGS.TIME_ADDED`, `CALL_LOGS.call_time` and the like) are filled by `CURRENT_TIMESTAMP` or `NOW()` in the server's time zone, which is `SYSTEM` (Europe/London). `FIXTURES.KICKOFF` and `ROUNDS.CUT_OFF` are UTC as api-football supplies them, and the API sends them out without a zone; that mismatch and its consequences are FPG-APP/fpg-docs#64.
+
+`call_log_sessions` is a view in `FPG` only, created by hand for fpg-analytics; it is in no migration and does not exist in `UAT_FPG`.
 
 ## Deployment
 
@@ -96,8 +99,8 @@ A CronJob in fpg-k8s (`db-backup-cron`, prod namespace, 02:00 daily) runs `mysql
 
 ## Gotchas in the migration history
 
-- `populate_dev.sql` is not in the repo: it is gitignored beside `yoyo.ini` and exists only on the laptop and as an applied row in `DEV_FPG._yoyo_migration`. It truncates twelve tables and copies `FPG.*` into the current schema inside a `SET FOREIGN_KEY_CHECKS = 0` / `= 1` pair, because a parent of a foreign key cannot be truncated otherwise; the `CHOICES` copy names its columns since `FIXTURE_ID` was dropped. It is otherwise column-order dependent and would wipe production if ever applied to `FPG`; only reapply it against `DEV_FPG`.
-- `DROP_FK_CHOICES_SCORES_PLAYERS` drops foreign keys whose `ADD_*` files were deleted from the repo; dev and testing carry orphaned `_yoyo_migration` rows for them, production never had them.
+- `populate_dev.sql` is not in the repo: it is gitignored beside `yoyo.ini` and exists only on the laptop and as an applied row in `DEV_FPG._yoyo_migration`. It truncates seventeen tables (`USERS`, `TOKENS` and the four mini-league tables among them) and copies `FPG.*` into the current schema inside a `SET FOREIGN_KEY_CHECKS = 0` / `= 1` pair, because a parent of a foreign key cannot be truncated otherwise, then deletes rows in the session tables it does not copy (`REFRESH_TOKENS`, `MCP_TOKENS`, the OAuth tables) whose account is not in the copied `USERS`, so the keys to `USERS` hold; the `CHOICES` copy names its columns since `FIXTURE_ID` was dropped. It is otherwise column-order dependent and would wipe production if ever applied to `FPG`; only reapply it against `DEV_FPG`.
+- `DROP_FK_CHOICES_SCORES_PLAYERS` drops foreign keys whose `ADD_*` files were deleted from the repo; dev and testing carry orphaned `_yoyo_migration` rows for them, production never had them. The keys came back in September 2026 pointing at `USERS` (`ADD_FK_GAME_TABLES_USERS`) once every legacy player had a `USERS` row, and `PLAYERS` was dropped (`DROP_TABLE_PLAYERS`) after its 29 recorded signup dates were copied into `USERS.CREATED_AT`.
 - `INSERT_TOBY_INTO_USERS` seeds a real account in every schema. `INIT_ROUND_1_2025`, `UPDATE_CURRENT_ROUND_2025` and `INSERT_2024_INTO_SEASONS` are season data scripts (the last is an UPDATE; there is no `SEASONS` table).
 - `ADD_COLS_STANDINGS` renames `OVERALL_TOTAL` to `SCORE` and assumes an empty table.
 - A stale `venv/` (Python 3.13, built for an old path) sits beside the real `.venv/`; both are ignored. Use `uv`.
