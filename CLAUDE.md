@@ -49,14 +49,14 @@ CI generates the same file from GitHub environment secrets and sets `batch_mode 
 ## Authoring a migration
 
 - File names are descriptive, no dates or sequence numbers. Root files are `UPPERCASE_VERB_OBJECT.sql` (`ADD_COL_ACTIVE_TO_TOKENS.sql`); `TABLES/` files are the bare lowercase table name (`mini_leagues.sql`). `populate_dev.sql`, the gitignored local file described under Gotchas, is the one exception.
-- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `ADD_FK_GAME_TABLES_USERS`, the last of an eleven-file chain that starts at `UPDATE_USERS_CREATED_AT_FROM_PLAYERS` (which depends on `SET_NOT_NULL_FIXTURES`). About twenty older files have no header and rely on scan order; do not add to that set.
+- Start every new file with `-- depends: <current chain tail>` so Yoyo orders it after everything else. The chain tail is `ADD_ENGINE_RUN_METRICS`, the last of an eleven-file chain that starts at `UPDATE_USERS_CREATED_AT_FROM_PLAYERS` (which depends on `SET_NOT_NULL_FIXTURES`). About twenty older files have no header and rely on scan order; do not add to that set.
 - New tables have recently been created from root files (`ADD_MCP_TOKENS_AND_LOGS.sql`, `ADD_OAUTH_TABLES.sql`) rather than `TABLES/`. Either location works; the depends header is what matters.
 - No rollback files exist, so `yoyo rollback` does nothing. Recovery is a forward migration or a restore from the nightly backup.
 - Migrations that touch data before adding constraints (`ADD_UNIQUE_USERS_EMAIL`, `ADD_UNIQUE_USERS_USERNAME`, `ADD_FK_TOKENS_USERS`) fail on duplicates or orphans; check the data first.
 
 ## Schema
 
-Twenty-eight tables, one sequence and one hand-made view exist in production today.
+Twenty-nine tables, one sequence and one hand-made view exist in production today.
 
 | Table | Purpose |
 |---|---|
@@ -76,7 +76,8 @@ Twenty-eight tables, one sequence and one hand-made view exist in production tod
 | `MCP_TOKENS`, `MCP_LOGS` | MCP personal access tokens and audit log |
 | `OAUTH_CLIENTS`, `OAUTH_AUTH_CODES`, `OAUTH_ACCESS_TOKENS`, `OAUTH_REFRESH_TOKENS` | OAuth for MCP clients |
 | `CALL_LOGS` | One row per authenticated API request; `STATUS_CODE`, `DURATION_MS`, `PLATFORM` are NULL before their migration |
-| `LOGS`, `NOTIFICATION_LOGS`, `ERROR_LOGS` | Engine run log, push sends, caught exceptions |
+| `LOGS`, `NOTIFICATION_LOGS`, `ERROR_LOGS` | Engine run log, push sends, caught exceptions. `LOGS.RUN_ID` is a uuid the engine generates per run, nullable because rows written before 2026-09-11 have none |
+| `ENGINE_RUN_METRICS` | One row per timed section of an engine run: `SECTION`, `DURATION_MS`, `ITEMS`, `DETAILS`, joined to `LOGS` on `RUN_ID`. Deliberately no foreign key: a run that crashes writes metrics and never writes its `LOGS` row |
 
 Most game tables carry a `SEASON` column. Foreign keys: `RESULTS` to `FIXTURES`; `CHOICES`, `SCORES`, `MINI_LEAGUE_SCORES` and `MINI_LEAGUE_STANDINGS` to `ROUNDS` on `(ROUND, SEASON)`; `MINI_LEAGUE_MEMBERS`, `MINI_LEAGUE_SCORES` and `MINI_LEAGUE_STANDINGS` to `MINI_LEAGUES`; and `PLAYER_ID` keys to `USERS` from `CHOICES`, `SCORES`, `STANDINGS`, `MINI_LEAGUES` (`CREATED_BY`), the three mini-league child tables, `REFRESH_TOKENS`, `TOKENS`, `MCP_TOKENS` and the three OAuth token tables. Delete rule: sessions and memberships (`REFRESH_TOKENS`, `TOKENS`, MCP and OAuth tokens, `MINI_LEAGUE_MEMBERS`) cascade from `USERS`, and league children cascade from `MINI_LEAGUES`; game history and league ownership restrict, so an account with picks cannot be deleted. Nothing deletes accounts today; deactivation sets `IS_DISABLED`. There is no key from `FIXTURES` to `ROUNDS`, because a season's fixtures are loaded up front while the engine creates each round's row as it opens.
 
@@ -99,6 +100,7 @@ A CronJob in fpg-k8s (`db-backup-cron`, prod namespace, 02:00 daily) runs `mysql
 
 ## Gotchas in the migration history
 
+- The `LOGS` and `CHOICES` copies in `populate_dev.sql` name their columns, because `RUN_ID` and the dropped `FIXTURE_ID` make the schemas differ until production has caught up. A `SELECT *` copy of either fails with "Column count doesn't match value count", truncating the table first; if that happens the migration is marked unapplied, so `yoyo apply` fixes it, not `reapply`.
 - `populate_dev.sql` is not in the repo: it is gitignored beside `yoyo.ini` and exists only on the laptop and as an applied row in `DEV_FPG._yoyo_migration`. It truncates seventeen tables (`USERS`, `TOKENS` and the four mini-league tables among them) and copies `FPG.*` into the current schema inside a `SET FOREIGN_KEY_CHECKS = 0` / `= 1` pair, because a parent of a foreign key cannot be truncated otherwise, then deletes rows in the session tables it does not copy (`REFRESH_TOKENS`, `MCP_TOKENS`, the OAuth tables) whose account is not in the copied `USERS`, so the keys to `USERS` hold; the `CHOICES` copy names its columns since `FIXTURE_ID` was dropped. It is otherwise column-order dependent and would wipe production if ever applied to `FPG`; only reapply it against `DEV_FPG`.
 - `DROP_FK_CHOICES_SCORES_PLAYERS` drops foreign keys whose `ADD_*` files were deleted from the repo; dev and testing carry orphaned `_yoyo_migration` rows for them, production never had them. The keys came back in September 2026 pointing at `USERS` (`ADD_FK_GAME_TABLES_USERS`) once every legacy player had a `USERS` row, and `PLAYERS` was dropped (`DROP_TABLE_PLAYERS`) after its 29 recorded signup dates were copied into `USERS.CREATED_AT`.
 - `INSERT_TOBY_INTO_USERS` seeds a real account in every schema. `INIT_ROUND_1_2025`, `UPDATE_CURRENT_ROUND_2025` and `INSERT_2024_INTO_SEASONS` are season data scripts (the last is an UPDATE; there is no `SEASONS` table).
